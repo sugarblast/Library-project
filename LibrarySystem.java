@@ -112,15 +112,20 @@ public class LibrarySystem {
 
     private void populateBookList(DefaultListModel<String> bookListModel, String query) {
         bookListModel.clear();
-        for (String title : library.keySet()) {
-            if (title.toLowerCase().contains(query.toLowerCase())) {
-                bookListModel.addElement(title);
-            }
-        }
+        library.keySet().stream()
+            .sorted((a, b) -> {
+                int numA = Integer.parseInt(a.split("\\.")[0].trim()); // Extract serial number from title
+                int numB = Integer.parseInt(b.split("\\.")[0].trim());
+                return Integer.compare(numA, numB);
+            })
+            .filter(title -> title.toLowerCase().contains(query.toLowerCase()))
+            .forEach(bookListModel::addElement);
+    
         if (bookListModel.isEmpty()) {
             bookListModel.addElement("No books found!");
         }
     }
+    
 
     private void uploadPDF() {
         JFileChooser fileChooser = new JFileChooser();
@@ -207,19 +212,69 @@ public class LibrarySystem {
 
     private class BookListCellRenderer extends DefaultListCellRenderer {
         @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+        public Component getListCellRendererComponent(
+                JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            
             String title = (String) value;
-            JPanel panel = new JPanel(new BorderLayout());
-            JLabel label = new JLabel(title);
-
+    
+            // Extract the serial number and title from the string
+            String[] parts = title.split("\\. ", 2);
+            String serialNumber = parts[0]; // Serial number
+            String bookTitle = parts.length > 1 ? parts[1] : title; // Title
+    
+            JPanel mainPanel = new JPanel();
+            mainPanel.setLayout(new BorderLayout());
+            mainPanel.setOpaque(true);
+            mainPanel.setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
+    
+            // Create a panel for the content (thumbnail + title)
+            JPanel contentPanel = new JPanel();
+            contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.X_AXIS));
+            contentPanel.setOpaque(false);
+    
+            // Create label for the serial number
+            JLabel serialLabel = new JLabel(serialNumber + ". ");
+            serialLabel.setFont(new Font("Arial", Font.BOLD, 14));
+            serialLabel.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 5));
+    
+            // Create label for the thumbnail
+            JLabel thumbnailLabel = new JLabel();
+            thumbnailLabel.setBorder(BorderFactory.createEmptyBorder(5, 5, 5, 5));
             if (bookCovers.containsKey(title)) {
-                label.setIcon(bookCovers.get(title));
+                thumbnailLabel.setIcon(bookCovers.get(title));
+            } else {
+                thumbnailLabel.setPreferredSize(new Dimension(100, 150)); // Placeholder size
+                thumbnailLabel.setOpaque(true);
+                thumbnailLabel.setBackground(Color.LIGHT_GRAY); // Placeholder color
             }
-
-            panel.add(label, BorderLayout.CENTER);
-            return panel;
+    
+            // Create label for the title
+            JLabel titleLabel = new JLabel(bookTitle);
+            titleLabel.setFont(new Font("Arial", Font.PLAIN, 14));
+            titleLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 5));
+    
+            // Add components to the content panel
+            contentPanel.add(serialLabel);
+            contentPanel.add(thumbnailLabel);
+            contentPanel.add(Box.createRigidArea(new Dimension(10, 0))); // Add spacing between thumbnail and title
+            contentPanel.add(titleLabel);
+    
+            // Add the content panel to the main panel
+            mainPanel.add(contentPanel, BorderLayout.CENTER);
+    
+            // Add a separator line at the bottom
+            if (index < list.getModel().getSize() - 1) { // Avoid adding a separator after the last item
+                JSeparator separator = new JSeparator(SwingConstants.HORIZONTAL);
+                separator.setForeground(Color.GRAY);
+                mainPanel.add(separator, BorderLayout.SOUTH);
+            }
+    
+            return mainPanel;
         }
     }
+    
+    
+    
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(LibrarySystem::new);
