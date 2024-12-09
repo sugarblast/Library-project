@@ -2,8 +2,7 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -18,7 +17,11 @@ public class LibrarySystem {
     private Map<String, File> library = new HashMap<>();
     private Map<String, ImageIcon> bookCovers = new HashMap<>(); // To store the cover images
 
+    private static final String DATA_FILE = "library_data.ser"; // File for saving data
+
     public LibrarySystem() {
+        loadLibraryData(); // Load existing library data at startup
+
         // Initialize the GUI
         mainFrame = new JFrame("Library System");
         mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -37,6 +40,14 @@ public class LibrarySystem {
 
         mainFrame.add(mainPanel);
         mainFrame.setVisible(true);
+
+        // Save data when the window is closed
+        mainFrame.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+                saveLibraryData();
+            }
+        });
     }
 
     private JPanel createAdminPanel() {
@@ -70,17 +81,12 @@ public class LibrarySystem {
         searchPanel.add(searchField);
         searchPanel.add(searchButton);
 
+        // Populate the book list with saved books at startup
+        populateBookList(bookListModel, "");
+
         searchButton.addActionListener(e -> {
             String query = searchField.getText().trim();
-            bookListModel.clear();
-            for (String title : library.keySet()) {
-                if (title.toLowerCase().contains(query.toLowerCase())) {
-                    bookListModel.addElement(title);
-                }
-            }
-            if (bookListModel.isEmpty()) {
-                bookListModel.addElement("No books found!");
-            }
+            populateBookList(bookListModel, query);
         });
 
         switchToAdmin.addActionListener(e -> cardLayout.show(mainPanel, "Admin"));
@@ -102,6 +108,18 @@ public class LibrarySystem {
         panel.add(switchToAdmin, BorderLayout.SOUTH);
 
         return panel;
+    }
+
+    private void populateBookList(DefaultListModel<String> bookListModel, String query) {
+        bookListModel.clear();
+        for (String title : library.keySet()) {
+            if (title.toLowerCase().contains(query.toLowerCase())) {
+                bookListModel.addElement(title);
+            }
+        }
+        if (bookListModel.isEmpty()) {
+            bookListModel.addElement("No books found!");
+        }
     }
 
     private void uploadPDF() {
@@ -149,64 +167,44 @@ public class LibrarySystem {
             pdfPanel.setLayout(new BoxLayout(pdfPanel, BoxLayout.Y_AXIS));
 
             JScrollPane scrollPane = new JScrollPane(pdfPanel);
-            // Adjust the scroll speed
             scrollPane.getVerticalScrollBar().setUnitIncrement(16); // Increase scroll speed
             pdfFrame.add(scrollPane);
 
-            // Add a panel for page navigation controls
-            JPanel navPanel = new JPanel();
-            JTextField pageNumberField = new JTextField(5); // Input field for page number
-            JButton jumpButton = new JButton("Go to Page");
-
-            navPanel.add(new JLabel("Page: "));
-            navPanel.add(pageNumberField);
-            navPanel.add(jumpButton);
-
-            pdfFrame.add(navPanel, BorderLayout.NORTH);
-
-            // Initialize size variables to track the maximum width/height of the pages
-            int maxWidth = 0;
-            int maxHeight = 0;
-
-            // Store all pages as image labels
-            Map<Integer, JLabel> pageLabels = new HashMap<>();
-
             for (int page = 0; page < document.getNumberOfPages(); page++) {
                 BufferedImage image = pdfRenderer.renderImageWithDPI(page, 100);
-                maxWidth = Math.max(maxWidth, image.getWidth());
-                maxHeight = Math.max(maxHeight, image.getHeight());
-
                 JLabel pageLabel = new JLabel(new ImageIcon(image));
-                pageLabels.put(page, pageLabel);
                 pdfPanel.add(pageLabel);
             }
 
-            // Dynamically adjust the frame size to fit the largest page
-            pdfFrame.setSize(maxWidth + 50, maxHeight + 50); // Add some padding to frame size
+            pdfFrame.setSize(800, 600);
             pdfFrame.setVisible(true);
-
-            // Add action listener to the "Go to Page" button
-            jumpButton.addActionListener(e -> {
-                String pageText = pageNumberField.getText().trim();
-                try {
-                    int targetPage = Integer.parseInt(pageText) - 1; // Convert to zero-indexed
-                    if (targetPage >= 0 && targetPage < document.getNumberOfPages()) {
-                        // Scroll to the target page
-                        JScrollBar verticalScrollBar = scrollPane.getVerticalScrollBar();
-                        verticalScrollBar.setValue(pageLabels.get(targetPage).getY());
-                    } else {
-                        JOptionPane.showMessageDialog(pdfFrame, "Invalid page number.");
-                    }
-                } catch (NumberFormatException ex) {
-                    JOptionPane.showMessageDialog(pdfFrame, "Please enter a valid page number.");
-                }
-            });
         } catch (Exception ex) {
             JOptionPane.showMessageDialog(mainFrame, "Error opening PDF: " + ex.getMessage());
         }
     }
 
-    // Custom ListCellRenderer to display the cover image and title
+    private void saveLibraryData() {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(DATA_FILE))) {
+            oos.writeObject(library);
+            oos.writeObject(bookCovers);
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(mainFrame, "Error saving library data: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void loadLibraryData() {
+        File dataFile = new File(DATA_FILE);
+        if (dataFile.exists()) {
+            try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(dataFile))) {
+                library = (Map<String, File>) ois.readObject();
+                bookCovers = (Map<String, ImageIcon>) ois.readObject();
+            } catch (IOException | ClassNotFoundException e) {
+                JOptionPane.showMessageDialog(null, "Error loading library data: " + e.getMessage());
+            }
+        }
+    }
+
     private class BookListCellRenderer extends DefaultListCellRenderer {
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
@@ -214,7 +212,6 @@ public class LibrarySystem {
             JPanel panel = new JPanel(new BorderLayout());
             JLabel label = new JLabel(title);
 
-            // Set the cover image for the book
             if (bookCovers.containsKey(title)) {
                 label.setIcon(bookCovers.get(title));
             }
